@@ -1,68 +1,154 @@
-import { StatsCard } from "@/components/dashboard/stats-card"
-import { TaskAnalytics } from "@/components/dashboard/task-analytics" 
-import { TaskOverview } from "@/components/dashboard/task-overview"
-import { createServerSupabaseClient } from "@/lib/supabase"
-import { redirect } from "next/navigation"
-import Link from "next/link"
 
-export const dynamic = "force-dynamic"
+"use client"
 
-export default async function DashboardPage() {
-  const supabase = createServerSupabaseClient()
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+import { useState, useEffect } from "react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 
-  if (!session) {
-    redirect("/")
+export default function WorkflowPage() {
+  const supabase = createClientComponentClient()
+  const [tasks, setTasks] = useState<any[]>([])
+  const [newTask, setNewTask] = useState("")
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editedTaskTitle, setEditedTaskTitle] = useState("")
+
+  const fetchTasks = async () => {
+    const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false })
+    if (!error && data) {
+      setTasks(data)
+    }
   }
 
-  const userEmail = session.user.email
+  const addTask = async () => {
+    if (newTask.trim() === "") return
+    const { error } = await supabase.from("tasks").insert([{ title: newTask, prioritized: false }])
+    if (!error) {
+      setNewTask("")
+      fetchTasks()
+    }
+  }
+
+  const deleteTask = async (id: string) => {
+    const { error } = await supabase.from("tasks").delete().eq("id", id)
+    if (!error) fetchTasks()
+  }
+
+  const prioritizeTask = async (id: string, current: boolean) => {
+    const { error } = await supabase.from("tasks").update({ prioritized: !current }).eq("id", id)
+    if (!error) fetchTasks()
+  }
+
+  const saveEditedTask = async (id: string) => {
+    if (editedTaskTitle.trim() === "") return
+    const { error } = await supabase.from("tasks").update({ title: editedTaskTitle }).eq("id", id)
+    if (!error) {
+      setEditingTaskId(null)
+      setEditedTaskTitle("")
+      fetchTasks()
+    }
+  }
+
+  useEffect(() => {
+    fetchTasks()
+  }, [])
 
   return (
-    <div className="min-h-screen flex bg-gray-950 text-white">
-      {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 border-r border-gray-800 p-6 hidden md:block">
-        <h2 className="text-xl font-bold mb-6 gradient-text">TaskFlow</h2>
-        <nav className="space-y-4">
-          <Link href="/dashboard" className="block px-3 py-2 rounded-md bg-blue-600 text-white font-medium">
-            Dashboard
-          </Link>
-          <Link href="/tasks" className="block px-3 py-2 rounded-md hover:bg-gray-800 transition">
-            Tasks
-          </Link>
-          <Link href="/settings" className="block px-3 py-2 rounded-md hover:bg-gray-800 transition">
-            Settings
-          </Link>
-        </nav>
-      </aside>
-
-      {/* Main Content */}
-      <div className="flex-1 p-6 md:p-10">
-        <header className="mb-10">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold gradient-text">Welcome back, {userEmail?.split("@")[0] || "User"} 👋</h1>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="container mx-auto px-4 py-8">
+        <header className="flex justify-between items-center py-6">
+          <div className="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6 text-blue-500"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <h1 className="text-2xl font-bold gradient-text">TaskFlow</h1>
           </div>
         </header>
 
-        <main className="space-y-12">
-          {/* Stats Section */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4">Your Stats</h2>
-            <StatsCard />
-          </section>
+        <main className="py-6 space-y-6">
+          <div className="flex items-center gap-2">
+            <Input
+              value={newTask}
+              onChange={(e) => setNewTask(e.target.value)}
+              placeholder="Enter new task"
+              className="max-w-sm"
+            />
+            <Button onClick={addTask} variant="default">Add Task</Button>
+          </div>
 
-          {/* Task Analytics */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4">Task Analytics</h2>
-            <TaskAnalytics />
-          </section>
+          <Tabs defaultValue="workflow" className="w-full">
+            <TabsList>
+              <TabsTrigger value="workflow">Workflow</TabsTrigger>
+            </TabsList>
+            <Separator className="my-4" />
 
-          {/* Task Overview */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4">Task Overview</h2>
-            <TaskOverview />
-          </section>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Task</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tasks.map((task) => (
+                    <TableRow key={task.id}>
+                      <TableCell>
+                        {editingTaskId === task.id ? (
+                          <Input
+                            value={editedTaskTitle}
+                            onChange={(e) => setEditedTaskTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveEditedTask(task.id)
+                            }}
+                          />
+                        ) : (
+                          <span className={task.prioritized ? "text-blue-400 font-semibold" : ""}>{task.title}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={task.prioritized ? "default" : "secondary"} className={task.prioritized ? "bg-blue-500 text-white" : "bg-gray-300 text-black"}>
+                          {task.prioritized ? "High" : "Normal"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="flex flex-wrap gap-2">
+                        {editingTaskId === task.id ? (
+                          <Button size="sm" variant="success" onClick={() => saveEditedTask(task.id)}>Save</Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setEditingTaskId(task.id)
+                            setEditedTaskTitle(task.title)
+                          }}>
+                            Edit
+                          </Button>
+                        )}
+                        <Button size="sm" variant="destructive" onClick={() => deleteTask(task.id)}>Delete</Button>
+                        <Button size="sm" variant="secondary" onClick={() => prioritizeTask(task.id, task.prioritized)}>
+                          {task.prioritized ? "Unprioritize" : "Prioritize"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Tabs>
         </main>
       </div>
     </div>
