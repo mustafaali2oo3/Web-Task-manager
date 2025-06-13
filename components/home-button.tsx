@@ -9,7 +9,7 @@ export function HomeButton() {
 
   const handleClick = () => {
     // Explicitly redirect to the dashboard page
-    router.push("dashboard/page1.tsx")
+    router.push("app/page2.tsx)
     console.log("Redirecting to dashboard page")
   }
 
