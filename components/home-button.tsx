@@ -16,7 +16,7 @@ export function HomeButton() {
   return (
     <Button onClick={handleClick} variant="outline" className="flex items-center gap-2">
       <Home className="h-4 w-4" />
-      Dashboard
+      Home
     </Button>
   )
 }
