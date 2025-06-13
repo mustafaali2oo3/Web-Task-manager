@@ -47,7 +47,7 @@ export default function WorkflowPage() {
 
     if (userError || !user) return
 
-    const { error } = await supabase.from("tasks").insert([
+    const { data, error } = await supabase.from("tasks").insert([
       {
         title: newTask,
         status: "todo",
@@ -56,11 +56,11 @@ export default function WorkflowPage() {
         user_id: user.id,
         created_at: new Date(),
       },
-    ])
+    ]).select()
 
-    if (!error) {
+    if (!error && data && data.length > 0) {
       setNewTask("")
-      await fetchTasks()
+      setTasks((prevTasks) => [data[0], ...prevTasks])
     }
   }
 
