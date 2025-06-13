@@ -37,17 +37,22 @@ export default function WorkflowPage() {
     }
   }
 
-  const addTask = async () => {
-    if (newTask.trim() === "") return
+ const addTask = async () => {
+  if (newTask.trim() === "") return;
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-    if (userError || !user) return
+  if (userError || !user) {
+    console.error("User fetch error:", userError);
+    return;
+  }
 
-    const { data, error } = await supabase.from("tasks").insert([
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert([
       {
         title: newTask,
         status: "todo",
@@ -56,14 +61,17 @@ export default function WorkflowPage() {
         user_id: user.id,
         created_at: new Date(),
       },
-    ]).select()
+    ])
+    .select();
 
-    if (!error && data && data.length > 0) {
-      setNewTask("")
-      setTasks((prevTasks) => [data[0], ...prevTasks])
-    }
+  if (error) {
+    console.error("Insert error:", error.message);
+  } else if (data) {
+    console.log("Task inserted:", data);
+    setNewTask("");
+    setTasks((prevTasks) => [data[0], ...prevTasks]);
   }
-
+   
   const deleteTask = async (id: string) => {
     const { error } = await supabase.from("tasks").delete().eq("id", id)
     if (!error) fetchTasks()
