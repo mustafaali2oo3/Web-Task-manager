@@ -18,7 +18,7 @@ export async function middleware(req: NextRequest) {
     const path = req.nextUrl.pathname
 
     // Public routes that don't require authentication
-    const publicRoutes = ["/", "/login", "/signup", "/auth"]
+    const publicRoutes = ["/", "/login", "/signup", "/auth", "/dashboard"]
     const isPublicRoute = publicRoutes.some((route) => path === route || path.startsWith("/auth/"))
 
     // Protected routes that require authentication
