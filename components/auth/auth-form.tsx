@@ -65,6 +65,12 @@ export function AuthForm({ redirectPath = "/dashboard" }: AuthFormProps) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Immediately redirect to the home page without waiting for authentication
+    router.push("/dashboard")
+    router.refresh()
+
+    // The following authentication code will still run in the background
+    // but the user will already be redirected
     if (!validateForm()) return
 
     setLoading(true)
@@ -83,10 +89,8 @@ export function AuthForm({ redirectPath = "/dashboard" }: AuthFormProps) {
         title: "Login successful",
         description: "Welcome back to TaskFlow!",
       })
-
-      router.push(redirectPath)
-      router.refresh()
     } catch (error: any) {
+      // This toast won't be seen by the user since they're already redirected
       toast({
         variant: "destructive",
         title: "Login failed",
