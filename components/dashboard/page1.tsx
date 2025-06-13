@@ -52,7 +52,7 @@ export default function WorkflowPage() {
         title: newTask,
         status: "todo",
         priority: "medium",
-        prioritized: false, 
+        prioritized: false,
         user_id: user.id,
         created_at: new Date(),
       },
@@ -60,7 +60,7 @@ export default function WorkflowPage() {
 
     if (!error) {
       setNewTask("")
-      fetchTasks()
+      await fetchTasks()
     }
   }
 
@@ -188,3 +188,4 @@ export default function WorkflowPage() {
     </div>
   )
 }
+
