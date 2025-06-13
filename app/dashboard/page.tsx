@@ -23,6 +23,7 @@ export default function WorkflowPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser()
+
     if (!user) return
 
     const { data, error } = await supabase
@@ -58,6 +59,7 @@ export default function WorkflowPage() {
           priority: "medium",
           prioritized: false,
           user_id: user.id,
+          created_at: new Date(),
         },
       ])
       .select()
@@ -65,6 +67,7 @@ export default function WorkflowPage() {
     if (error) {
       console.error("Insert error:", error.message)
     } else if (data) {
+      console.log("Task inserted:", data)
       setNewTask("")
       setTasks((prevTasks) => [data[0], ...prevTasks])
     }
@@ -76,19 +79,13 @@ export default function WorkflowPage() {
   }
 
   const prioritizeTask = async (id: string, current: boolean) => {
-    const { error } = await supabase
-      .from("tasks")
-      .update({ prioritized: !current })
-      .eq("id", id)
+    const { error } = await supabase.from("tasks").update({ prioritized: !current }).eq("id", id)
     if (!error) fetchTasks()
   }
 
   const saveEditedTask = async (id: string) => {
     if (editedTaskTitle.trim() === "") return
-    const { error } = await supabase
-      .from("tasks")
-      .update({ title: editedTaskTitle })
-      .eq("id", id)
+    const { error } = await supabase.from("tasks").update({ title: editedTaskTitle }).eq("id", id)
     if (!error) {
       setEditingTaskId(null)
       setEditedTaskTitle("")
@@ -165,24 +162,17 @@ export default function WorkflowPage() {
                                 }}
                               />
                             ) : (
-                              <span className={task.prioritized ? "text-blue-500 font-semibold" : ""}>
-                                {task.title}
-                              </span>
+                              <span className={task.prioritized ? "text-blue-400 font-semibold" : ""}>{task.title}</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant={task.prioritized ? "default" : "secondary"}
-                              className={task.prioritized ? "bg-blue-500 text-white" : "bg-gray-300 text-black"}
-                            >
+                            <Badge variant={task.prioritized ? "default" : "secondary"} className={task.prioritized ? "bg-blue-500 text-white" : "bg-gray-300 text-black"}>
                               {task.prioritized ? "High" : "Normal"}
                             </Badge>
                           </TableCell>
                           <TableCell className="flex flex-wrap gap-2">
                             {editingTaskId === task.id ? (
-                              <Button size="sm" variant="success" onClick={() => saveEditedTask(task.id)}>
-                                Save
-                              </Button>
+                              <Button size="sm" variant="success" onClick={() => saveEditedTask(task.id)}>Save</Button>
                             ) : (
                               <Button size="sm" variant="outline" onClick={() => {
                                 setEditingTaskId(task.id)
@@ -191,9 +181,7 @@ export default function WorkflowPage() {
                                 Edit
                               </Button>
                             )}
-                            <Button size="sm" variant="destructive" onClick={() => deleteTask(task.id)}>
-                              Delete
-                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => deleteTask(task.id)}>Delete</Button>
                             <Button size="sm" variant="secondary" onClick={() => prioritizeTask(task.id, task.prioritized)}>
                               {task.prioritized ? "Unprioritize" : "Prioritize"}
                             </Button>
