@@ -9,7 +9,7 @@ export function HomeButton() {
 
   const handleClick = () => {
     router.push("/page2")
-    console.log("Redirecting to /page2")
+    console.log("Redirecting to /dashboard")
   }
 
   return (
