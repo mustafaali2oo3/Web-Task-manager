@@ -8,7 +8,7 @@ export function HomeButton() {
   const router = useRouter()
 
   const handleClick = () => {
-    router.push("/page2")
+    router.push("/dashboard")
     console.log("Redirecting to /dashboard")
   }
 
