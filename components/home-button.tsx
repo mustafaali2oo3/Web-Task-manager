@@ -8,9 +8,8 @@ export function HomeButton() {
   const router = useRouter()
 
   const handleClick = () => {
-    // Explicitly redirect to the dashboard page
-    router.push("page2.tsx)
-    console.log("Redirecting to dashboard page")
+    router.push("/page2")
+    console.log("Redirecting to /page2")
   }
 
   return (
