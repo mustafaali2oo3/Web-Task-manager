@@ -1,5 +1,5 @@
 import { StatsCard } from "@/components/dashboard/stats-card"
-import { TaskAnalytics } from "@/components/dashboard/task-analytics"
+import { TaskAnalytics } from "@/components/dashboard/task-analytics" 
 import { TaskOverview } from "@/components/dashboard/task-overview"
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { redirect } from "next/navigation"
