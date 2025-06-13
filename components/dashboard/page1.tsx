@@ -1,3 +1,4 @@
+// app/workflow/page.tsx
 
 "use client"
 
@@ -19,7 +20,18 @@ export default function WorkflowPage() {
   const [editedTaskTitle, setEditedTaskTitle] = useState("")
 
   const fetchTasks = async () => {
-    const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false })
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) return
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+
     if (!error && data) {
       setTasks(data)
     }
@@ -27,7 +39,24 @@ export default function WorkflowPage() {
 
   const addTask = async () => {
     if (newTask.trim() === "") return
-    const { error } = await supabase.from("tasks").insert([{ title: newTask, prioritized: false }])
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) return
+
+    const { error } = await supabase.from("tasks").insert([
+      {
+        title: newTask,
+        status: "todo",
+        priority: "medium",
+        user_id: user.id,
+        created_at: new Date(),
+      },
+    ])
+
     if (!error) {
       setNewTask("")
       fetchTasks()
@@ -98,55 +127,59 @@ export default function WorkflowPage() {
             <Separator className="my-4" />
 
             <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Task</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasks.map((task) => (
-                    <TableRow key={task.id}>
-                      <TableCell>
-                        {editingTaskId === task.id ? (
-                          <Input
-                            value={editedTaskTitle}
-                            onChange={(e) => setEditedTaskTitle(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") saveEditedTask(task.id)
-                            }}
-                          />
-                        ) : (
-                          <span className={task.prioritized ? "text-blue-400 font-semibold" : ""}>{task.title}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={task.prioritized ? "default" : "secondary"} className={task.prioritized ? "bg-blue-500 text-white" : "bg-gray-300 text-black"}>
-                          {task.prioritized ? "High" : "Normal"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="flex flex-wrap gap-2">
-                        {editingTaskId === task.id ? (
-                          <Button size="sm" variant="success" onClick={() => saveEditedTask(task.id)}>Save</Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => {
-                            setEditingTaskId(task.id)
-                            setEditedTaskTitle(task.title)
-                          }}>
-                            Edit
-                          </Button>
-                        )}
-                        <Button size="sm" variant="destructive" onClick={() => deleteTask(task.id)}>Delete</Button>
-                        <Button size="sm" variant="secondary" onClick={() => prioritizeTask(task.id, task.prioritized)}>
-                          {task.prioritized ? "Unprioritize" : "Prioritize"}
-                        </Button>
-                      </TableCell>
+              {tasks.length === 0 ? (
+                <p className="text-muted">No tasks yet. Add one above!</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Task</TableHead>
+                      <TableHead>Priority</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {tasks.map((task) => (
+                      <TableRow key={task.id}>
+                        <TableCell>
+                          {editingTaskId === task.id ? (
+                            <Input
+                              value={editedTaskTitle}
+                              onChange={(e) => setEditedTaskTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveEditedTask(task.id)
+                              }}
+                            />
+                          ) : (
+                            <span className={task.prioritized ? "text-blue-400 font-semibold" : ""}>{task.title}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={task.prioritized ? "default" : "secondary"} className={task.prioritized ? "bg-blue-500 text-white" : "bg-gray-300 text-black"}>
+                            {task.prioritized ? "High" : "Normal"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="flex flex-wrap gap-2">
+                          {editingTaskId === task.id ? (
+                            <Button size="sm" variant="success" onClick={() => saveEditedTask(task.id)}>Save</Button>
+                          ) : (
+                            <Button size="sm" variant="outline" onClick={() => {
+                              setEditingTaskId(task.id)
+                              setEditedTaskTitle(task.title)
+                            }}>
+                              Edit
+                            </Button>
+                          )}
+                          <Button size="sm" variant="destructive" onClick={() => deleteTask(task.id)}>Delete</Button>
+                          <Button size="sm" variant="secondary" onClick={() => prioritizeTask(task.id, task.prioritized)}>
+                            {task.prioritized ? "Unprioritize" : "Prioritize"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
           </Tabs>
         </main>
