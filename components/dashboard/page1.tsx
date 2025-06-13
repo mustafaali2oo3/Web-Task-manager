@@ -52,6 +52,7 @@ export default function WorkflowPage() {
         title: newTask,
         status: "todo",
         priority: "medium",
+        prioritized: false, 
         user_id: user.id,
         created_at: new Date(),
       },
