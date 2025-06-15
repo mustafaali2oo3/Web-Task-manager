@@ -18,12 +18,19 @@ export async function middleware(req: NextRequest) {
     const path = req.nextUrl.pathname
 
     // Public routes that don't require authentication
-    const publicRoutes = ["/", "/login", "/signup", "/auth", "/dashboard"]
+    const publicRoutes = ["/", "/login", "/signup", "/auth"]
     const isPublicRoute = publicRoutes.some((route) => path === route || path.startsWith("/auth/"))
 
-    // Protected routes that require authentication
+    // Allow dashboard access - let the page handle auth internally
+    const isDashboardRoute = path === "/dashboard"
+
+    // Protected routes that require authentication (excluding dashboard for now)
     const isProtectedRoute =
-      !isPublicRoute && !path.includes("_next") && !path.includes("api") && !path.includes("favicon.ico")
+      !isPublicRoute &&
+      !isDashboardRoute &&
+      !path.includes("_next") &&
+      !path.includes("api") &&
+      !path.includes("favicon.ico")
 
     // If user is not signed in and trying to access a protected route, redirect to home
     if (!session && isProtectedRoute) {

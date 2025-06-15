@@ -22,7 +22,7 @@ interface Task {
   title: string
   status: "todo" | "in_progress" | "done"
   priority: "low" | "medium" | "high"
-  prioritized?: boolean // Make optional to handle missing column gracefully
+  prioritized?: boolean
   user_id: string
   created_at: string
 }
@@ -40,11 +40,33 @@ export default function DashboardPage() {
   const [adding, setAdding] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
+  const [hasPrioritizedColumn, setHasPrioritizedColumn] = useState(true)
+
+  // Check if prioritized column exists
+  const checkPrioritizedColumn = async () => {
+    try {
+      const { data, error } = await supabase.from("tasks").select("prioritized").limit(1)
+
+      if (error && error.message.includes("prioritized")) {
+        console.log("Prioritized column does not exist")
+        setHasPrioritizedColumn(false)
+        return false
+      }
+
+      setHasPrioritizedColumn(true)
+      return true
+    } catch (error) {
+      console.log("Error checking prioritized column:", error)
+      setHasPrioritizedColumn(false)
+      return false
+    }
+  }
 
   // Check authentication and get user session
   const checkAuth = async () => {
     try {
       setSessionLoading(true)
+
       const {
         data: { session },
         error: sessionError,
@@ -52,32 +74,33 @@ export default function DashboardPage() {
 
       if (sessionError) {
         console.error("Session error:", sessionError)
-        toast({
-          variant: "destructive",
-          title: "Authentication Error",
-          description: "Please log in again.",
-        })
-        router.push("/")
-        return null
       }
 
-      if (!session || !session.user) {
-        console.log("No active session found, redirecting to login")
-        router.push("/")
-        return null
+      if (session && session.user) {
+        console.log("User authenticated:", session.user.email)
+        setUser(session.user)
+        return session.user
       }
 
-      console.log("User authenticated:", session.user.email)
-      setUser(session.user)
-      return session.user
+      const {
+        data: { user: authUser },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError) {
+        console.error("User error:", userError)
+      }
+
+      if (authUser) {
+        console.log("User found via getUser:", authUser.email)
+        setUser(authUser)
+        return authUser
+      }
+
+      console.log("No authenticated user found")
+      return null
     } catch (error) {
       console.error("Auth check error:", error)
-      toast({
-        variant: "destructive",
-        title: "Authentication Error",
-        description: "Failed to verify authentication.",
-      })
-      router.push("/")
       return null
     } finally {
       setSessionLoading(false)
@@ -88,7 +111,6 @@ export default function DashboardPage() {
     try {
       setLoading(true)
 
-      // Use the passed user or the state user
       const userToUse = currentUser || user
 
       if (!userToUse) {
@@ -98,10 +120,17 @@ export default function DashboardPage() {
 
       console.log("Fetching tasks for user:", userToUse.id)
 
-      // Select only the columns that definitely exist
+      // Check if prioritized column exists first
+      const columnExists = await checkPrioritizedColumn()
+
+      // Build select query based on column availability
+      const selectFields = columnExists
+        ? "id, title, status, priority, user_id, created_at, prioritized"
+        : "id, title, status, priority, user_id, created_at"
+
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, title, status, priority, user_id, created_at, prioritized")
+        .select(selectFields)
         .eq("user_id", userToUse.id)
         .order("created_at", { ascending: false })
 
@@ -116,11 +145,13 @@ export default function DashboardPage() {
       }
 
       console.log("Fetched tasks:", data)
-      // Handle missing prioritized column gracefully
+
+      // Add default prioritized value if column doesn't exist
       const tasksWithDefaults = (data || []).map((task) => ({
         ...task,
-        prioritized: task.prioritized ?? false, // Default to false if column doesn't exist
+        prioritized: task.prioritized ?? task.priority === "high", // Default based on priority
       }))
+
       setTasks(tasksWithDefaults)
     } catch (error) {
       console.error("Unexpected error fetching tasks:", error)
@@ -148,31 +179,19 @@ export default function DashboardPage() {
       setAdding(true)
       console.log("Adding task:", { title: newTask, priority: newTaskPriority, user_id: user.id })
 
-      // Create task data without prioritized field initially
-      const taskData = {
+      const baseTaskData = {
         title: newTask.trim(),
         status: "todo" as const,
         priority: newTaskPriority,
         user_id: user.id,
       }
 
-      // Try to add prioritized field, but handle gracefully if column doesn't exist
-      const taskDataWithPrioritized = {
-        ...taskData,
-        prioritized: newTaskPriority === "high", // Auto-prioritize high priority tasks
-      }
+      // Add prioritized field only if column exists
+      const taskData = hasPrioritizedColumn
+        ? { ...baseTaskData, prioritized: newTaskPriority === "high" }
+        : baseTaskData
 
-      let insertData = taskDataWithPrioritized
-      let { data, error } = await supabase.from("tasks").insert([insertData]).select()
-
-      // If error mentions prioritized column, try without it
-      if (error && error.message.includes("prioritized")) {
-        console.log("Prioritized column not found, trying without it...")
-        insertData = taskData
-        const result = await supabase.from("tasks").insert([insertData]).select()
-        data = result.data
-        error = result.error
-      }
+      const { data, error } = await supabase.from("tasks").insert([taskData]).select()
 
       if (error) {
         console.error("Insert error:", error)
@@ -187,10 +206,9 @@ export default function DashboardPage() {
       console.log("Task added successfully:", data)
 
       if (data && data.length > 0) {
-        // Add default prioritized value if not present
         const newTaskWithDefaults = {
           ...data[0],
-          prioritized: data[0].prioritized ?? false,
+          prioritized: data[0].prioritized ?? data[0].priority === "high",
         }
         setTasks((prevTasks) => [newTaskWithDefaults, ...prevTasks])
         setNewTask("")
@@ -248,8 +266,17 @@ export default function DashboardPage() {
   const prioritizeTask = async (id: string, current: boolean) => {
     if (!user) return
 
+    // If prioritized column doesn't exist, show a message
+    if (!hasPrioritizedColumn) {
+      toast({
+        variant: "destructive",
+        title: "Feature Not Available",
+        description: "The prioritized feature requires a database update. Please run the migration script.",
+      })
+      return
+    }
+
     try {
-      // Try to update prioritized field, handle gracefully if column doesn't exist
       const { error } = await supabase
         .from("tasks")
         .update({ prioritized: !current })
@@ -257,14 +284,6 @@ export default function DashboardPage() {
         .eq("user_id", user.id)
 
       if (error) {
-        if (error.message.includes("prioritized")) {
-          toast({
-            variant: "destructive",
-            title: "Feature Not Available",
-            description: "The prioritized feature requires a database update. Please contact support.",
-          })
-          return
-        }
         console.error("Update error:", error)
         toast({
           variant: "destructive",
@@ -369,46 +388,55 @@ export default function DashboardPage() {
       const authenticatedUser = await checkAuth()
       if (authenticatedUser) {
         await fetchTasks(authenticatedUser)
+      } else {
+        setTimeout(() => {
+          if (!user) {
+            console.log("No user after delay, redirecting to home")
+            router.push("/")
+          }
+        }, 1000)
       }
     }
 
     initializeDashboard()
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth state changed:", event, session?.user?.email)
-      if (event === "SIGNED_OUT" || !session) {
+      if (event === "SIGNED_OUT") {
+        setUser(null)
         router.push("/")
-      } else if (event === "SIGNED_IN" && session.user) {
+      } else if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user)
         await fetchTasks(session.user)
+      } else if (event === "TOKEN_REFRESHED" && session?.user) {
+        setUser(session.user)
       }
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  // Show loading screen while checking authentication
   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin" />
           <p>Loading dashboard...</p>
+          <p className="text-sm text-muted-foreground">Checking authentication...</p>
         </div>
       </div>
     )
   }
 
-  // Show loading screen if no user (will redirect)
   if (!user) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin" />
-          <p>Redirecting to login...</p>
+          <p>Authenticating...</p>
+          <p className="text-sm text-muted-foreground">Please wait while we verify your session...</p>
         </div>
       </div>
     )
@@ -451,6 +479,19 @@ export default function DashboardPage() {
             </Button>
           </div>
         </header>
+
+        {!hasPrioritizedColumn && (
+          <div className="mb-4">
+            <Card className="border-yellow-500/50 bg-yellow-500/10">
+              <CardContent className="p-4">
+                <p className="text-yellow-600 dark:text-yellow-400">
+                  <strong>Notice:</strong> The prioritized feature is not available. Please run the database migration
+                  script to enable this feature.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <main className="py-6 space-y-6">
           {/* Add Task Form */}
@@ -602,6 +643,7 @@ export default function DashboardPage() {
                                   size="sm"
                                   variant="secondary"
                                   onClick={() => prioritizeTask(task.id, task.prioritized || false)}
+                                  disabled={!hasPrioritizedColumn}
                                 >
                                   {task.prioritized ? "Unprioritize" : "Prioritize"}
                                 </Button>
