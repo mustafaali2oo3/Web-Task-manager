@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast-provider"
-import { Loader2, Plus, RefreshCw } from "lucide-react"
+import { Loader2, Plus, RefreshCw, LogIn } from "lucide-react"
 
 interface Task {
   id: string
@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [hasPrioritizedColumn, setHasPrioritizedColumn] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   // Check if prioritized column exists
   const checkPrioritizedColumn = async () => {
@@ -66,41 +67,46 @@ export default function DashboardPage() {
   const checkAuth = async () => {
     try {
       setSessionLoading(true)
+      setAuthError(null)
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession()
+      console.log("Checking authentication...")
+
+      // Try to get the current session
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
 
       if (sessionError) {
         console.error("Session error:", sessionError)
+        setAuthError(`Session error: ${sessionError.message}`)
+        return null
       }
 
-      if (session && session.user) {
-        console.log("User authenticated:", session.user.email)
-        setUser(session.user)
-        return session.user
+      if (sessionData?.session?.user) {
+        console.log("User authenticated via session:", sessionData.session.user.email)
+        setUser(sessionData.session.user)
+        return sessionData.session.user
       }
 
-      const {
-        data: { user: authUser },
-        error: userError,
-      } = await supabase.auth.getUser()
+      // If no session, try to get user directly
+      const { data: userData, error: userError } = await supabase.auth.getUser()
 
       if (userError) {
         console.error("User error:", userError)
+        setAuthError(`User error: ${userError.message}`)
+        return null
       }
 
-      if (authUser) {
-        console.log("User found via getUser:", authUser.email)
-        setUser(authUser)
-        return authUser
+      if (userData?.user) {
+        console.log("User found via getUser:", userData.user.email)
+        setUser(userData.user)
+        return userData.user
       }
 
       console.log("No authenticated user found")
+      setAuthError("No authenticated user found. Please log in.")
       return null
-    } catch (error) {
+    } catch (error: any) {
       console.error("Auth check error:", error)
+      setAuthError(`Authentication error: ${error.message || "Unknown error"}`)
       return null
     } finally {
       setSessionLoading(false)
@@ -381,6 +387,10 @@ export default function DashboardPage() {
     }
   }
 
+  const handleGoToLogin = () => {
+    router.push("/")
+  }
+
   // Initialize authentication and data fetching
   useEffect(() => {
     const initializeDashboard = async () => {
@@ -388,13 +398,6 @@ export default function DashboardPage() {
       const authenticatedUser = await checkAuth()
       if (authenticatedUser) {
         await fetchTasks(authenticatedUser)
-      } else {
-        setTimeout(() => {
-          if (!user) {
-            console.log("No user after delay, redirecting to home")
-            router.push("/")
-          }
-        }, 1000)
       }
     }
 
@@ -406,18 +409,21 @@ export default function DashboardPage() {
       console.log("Auth state changed:", event, session?.user?.email)
       if (event === "SIGNED_OUT") {
         setUser(null)
-        router.push("/")
+        setAuthError("You have been signed out.")
       } else if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user)
+        setAuthError(null)
         await fetchTasks(session.user)
       } else if (event === "TOKEN_REFRESHED" && session?.user) {
         setUser(session.user)
+        setAuthError(null)
       }
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
+  // Show loading screen while checking authentication
   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
@@ -430,14 +436,24 @@ export default function DashboardPage() {
     )
   }
 
-  if (!user) {
+  // Show authentication error screen
+  if (authError || !user) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <p>Authenticating...</p>
-          <p className="text-sm text-muted-foreground">Please wait while we verify your session...</p>
-        </div>
+        <Card className="w-full max-w-md">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <LogIn className="h-12 w-12 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">Authentication Required</h2>
+              <p className="text-muted-foreground">
+                {authError || "You need to be logged in to access the dashboard."}
+              </p>
+              <Button onClick={handleGoToLogin} className="w-full">
+                Go to Login
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
