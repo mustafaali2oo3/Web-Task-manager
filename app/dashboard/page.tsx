@@ -15,14 +15,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast-provider"
-import { Loader2, Plus } from "lucide-react"
+import { Loader2, Plus, RefreshCw } from "lucide-react"
 
 interface Task {
   id: string
   title: string
   status: "todo" | "in_progress" | "done"
   priority: "low" | "medium" | "high"
-  prioritized: boolean
+  prioritized?: boolean // Make optional to handle missing column gracefully
   user_id: string
   created_at: string
 }
@@ -98,9 +98,10 @@ export default function DashboardPage() {
 
       console.log("Fetching tasks for user:", userToUse.id)
 
+      // Select only the columns that definitely exist
       const { data, error } = await supabase
         .from("tasks")
-        .select("*")
+        .select("id, title, status, priority, user_id, created_at, prioritized")
         .eq("user_id", userToUse.id)
         .order("created_at", { ascending: false })
 
@@ -115,7 +116,12 @@ export default function DashboardPage() {
       }
 
       console.log("Fetched tasks:", data)
-      setTasks(data || [])
+      // Handle missing prioritized column gracefully
+      const tasksWithDefaults = (data || []).map((task) => ({
+        ...task,
+        prioritized: task.prioritized ?? false, // Default to false if column doesn't exist
+      }))
+      setTasks(tasksWithDefaults)
     } catch (error) {
       console.error("Unexpected error fetching tasks:", error)
       toast({
@@ -142,15 +148,31 @@ export default function DashboardPage() {
       setAdding(true)
       console.log("Adding task:", { title: newTask, priority: newTaskPriority, user_id: user.id })
 
+      // Create task data without prioritized field initially
       const taskData = {
         title: newTask.trim(),
         status: "todo" as const,
         priority: newTaskPriority,
-        prioritized: newTaskPriority === "high", // Auto-prioritize high priority tasks
         user_id: user.id,
       }
 
-      const { data, error } = await supabase.from("tasks").insert([taskData]).select()
+      // Try to add prioritized field, but handle gracefully if column doesn't exist
+      const taskDataWithPrioritized = {
+        ...taskData,
+        prioritized: newTaskPriority === "high", // Auto-prioritize high priority tasks
+      }
+
+      let insertData = taskDataWithPrioritized
+      let { data, error } = await supabase.from("tasks").insert([insertData]).select()
+
+      // If error mentions prioritized column, try without it
+      if (error && error.message.includes("prioritized")) {
+        console.log("Prioritized column not found, trying without it...")
+        insertData = taskData
+        const result = await supabase.from("tasks").insert([insertData]).select()
+        data = result.data
+        error = result.error
+      }
 
       if (error) {
         console.error("Insert error:", error)
@@ -165,7 +187,12 @@ export default function DashboardPage() {
       console.log("Task added successfully:", data)
 
       if (data && data.length > 0) {
-        setTasks((prevTasks) => [data[0], ...prevTasks])
+        // Add default prioritized value if not present
+        const newTaskWithDefaults = {
+          ...data[0],
+          prioritized: data[0].prioritized ?? false,
+        }
+        setTasks((prevTasks) => [newTaskWithDefaults, ...prevTasks])
         setNewTask("")
         setNewTaskPriority("medium")
         toast({
@@ -222,6 +249,7 @@ export default function DashboardPage() {
     if (!user) return
 
     try {
+      // Try to update prioritized field, handle gracefully if column doesn't exist
       const { error } = await supabase
         .from("tasks")
         .update({ prioritized: !current })
@@ -229,6 +257,14 @@ export default function DashboardPage() {
         .eq("user_id", user.id)
 
       if (error) {
+        if (error.message.includes("prioritized")) {
+          toast({
+            variant: "destructive",
+            title: "Feature Not Available",
+            description: "The prioritized feature requires a database update. Please contact support.",
+          })
+          return
+        }
         console.error("Update error:", error)
         toast({
           variant: "destructive",
@@ -399,6 +435,10 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold gradient-text">TaskFlow Dashboard</h1>
           </div>
           <div className="flex items-center gap-4">
+            <Button variant="outline" size="sm" onClick={() => fetchTasks()} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
             <span className="text-sm text-gray-400">Welcome, {user.email}</span>
             <Button
               variant="outline"
@@ -463,7 +503,7 @@ export default function DashboardPage() {
 
           <Tabs defaultValue="workflow" className="w-full">
             <TabsList>
-              <TabsTrigger value="workflow">Task Workflow</TabsTrigger>
+              <TabsTrigger value="workflow">Task Workflow ({tasks.length})</TabsTrigger>
             </TabsList>
             <Separator className="my-4" />
 
@@ -561,7 +601,7 @@ export default function DashboardPage() {
                                 <Button
                                   size="sm"
                                   variant="secondary"
-                                  onClick={() => prioritizeTask(task.id, task.prioritized)}
+                                  onClick={() => prioritizeTask(task.id, task.prioritized || false)}
                                 >
                                   {task.prioritized ? "Unprioritize" : "Prioritize"}
                                 </Button>
