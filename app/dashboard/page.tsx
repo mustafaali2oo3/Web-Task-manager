@@ -10,10 +10,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast-provider"
-import { Loader2 } from "lucide-react"
+import { Loader2, Plus } from "lucide-react"
 
 interface Task {
   id: string
@@ -31,6 +33,7 @@ export default function DashboardPage() {
   const { toast } = useToast()
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTask, setNewTask] = useState("")
+  const [newTaskPriority, setNewTaskPriority] = useState<"low" | "medium" | "high">("medium")
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editedTaskTitle, setEditedTaskTitle] = useState("")
   const [loading, setLoading] = useState(true)
@@ -49,6 +52,11 @@ export default function DashboardPage() {
 
       if (sessionError) {
         console.error("Session error:", sessionError)
+        toast({
+          variant: "destructive",
+          title: "Authentication Error",
+          description: "Please log in again.",
+        })
         router.push("/")
         return null
       }
@@ -59,10 +67,16 @@ export default function DashboardPage() {
         return null
       }
 
+      console.log("User authenticated:", session.user.email)
       setUser(session.user)
       return session.user
     } catch (error) {
       console.error("Auth check error:", error)
+      toast({
+        variant: "destructive",
+        title: "Authentication Error",
+        description: "Failed to verify authentication.",
+      })
       router.push("/")
       return null
     } finally {
@@ -82,6 +96,8 @@ export default function DashboardPage() {
         return
       }
 
+      console.log("Fetching tasks for user:", userToUse.id)
+
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
@@ -92,19 +108,20 @@ export default function DashboardPage() {
         console.error("Error fetching tasks:", error)
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to fetch tasks. Please try again.",
+          title: "Database Error",
+          description: `Failed to fetch tasks: ${error.message}`,
         })
         return
       }
 
+      console.log("Fetched tasks:", data)
       setTasks(data || [])
     } catch (error) {
-      console.error("Unexpected error:", error)
+      console.error("Unexpected error fetching tasks:", error)
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred while fetching tasks.",
       })
     } finally {
       setLoading(false)
@@ -112,48 +129,56 @@ export default function DashboardPage() {
   }
 
   const addTask = async () => {
-    if (newTask.trim() === "" || !user) return
+    if (newTask.trim() === "" || !user) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please enter a task title.",
+      })
+      return
+    }
 
     try {
       setAdding(true)
+      console.log("Adding task:", { title: newTask, priority: newTaskPriority, user_id: user.id })
 
-      const { data, error } = await supabase
-        .from("tasks")
-        .insert([
-          {
-            title: newTask,
-            status: "todo",
-            priority: "medium",
-            prioritized: false,
-            user_id: user.id,
-          },
-        ])
-        .select()
+      const taskData = {
+        title: newTask.trim(),
+        status: "todo" as const,
+        priority: newTaskPriority,
+        prioritized: newTaskPriority === "high", // Auto-prioritize high priority tasks
+        user_id: user.id,
+      }
+
+      const { data, error } = await supabase.from("tasks").insert([taskData]).select()
 
       if (error) {
         console.error("Insert error:", error)
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to add task. Please try again.",
+          title: "Database Error",
+          description: `Failed to add task: ${error.message}`,
         })
         return
       }
 
+      console.log("Task added successfully:", data)
+
       if (data && data.length > 0) {
         setTasks((prevTasks) => [data[0], ...prevTasks])
         setNewTask("")
+        setNewTaskPriority("medium")
         toast({
           title: "Success",
           description: "Task added successfully!",
         })
       }
     } catch (error) {
-      console.error("Unexpected error:", error)
+      console.error("Unexpected error adding task:", error)
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred while adding the task.",
       })
     } finally {
       setAdding(false)
@@ -164,14 +189,16 @@ export default function DashboardPage() {
     if (!user) return
 
     try {
+      console.log("Deleting task:", id)
+
       const { error } = await supabase.from("tasks").delete().eq("id", id).eq("user_id", user.id)
 
       if (error) {
         console.error("Delete error:", error)
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to delete task. Please try again.",
+          title: "Database Error",
+          description: `Failed to delete task: ${error.message}`,
         })
         return
       }
@@ -182,11 +209,11 @@ export default function DashboardPage() {
         description: "Task deleted successfully!",
       })
     } catch (error) {
-      console.error("Unexpected error:", error)
+      console.error("Unexpected error deleting task:", error)
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred while deleting the task.",
       })
     }
   }
@@ -205,8 +232,8 @@ export default function DashboardPage() {
         console.error("Update error:", error)
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to update task priority. Please try again.",
+          title: "Database Error",
+          description: `Failed to update task priority: ${error.message}`,
         })
         return
       }
@@ -218,11 +245,11 @@ export default function DashboardPage() {
         description: `Task ${!current ? "prioritized" : "unprioritized"} successfully!`,
       })
     } catch (error) {
-      console.error("Unexpected error:", error)
+      console.error("Unexpected error updating priority:", error)
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred while updating priority.",
       })
     }
   }
@@ -233,7 +260,7 @@ export default function DashboardPage() {
     try {
       const { error } = await supabase
         .from("tasks")
-        .update({ title: editedTaskTitle })
+        .update({ title: editedTaskTitle.trim() })
         .eq("id", id)
         .eq("user_id", user.id)
 
@@ -241,13 +268,15 @@ export default function DashboardPage() {
         console.error("Update error:", error)
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to update task. Please try again.",
+          title: "Database Error",
+          description: `Failed to update task: ${error.message}`,
         })
         return
       }
 
-      setTasks((prevTasks) => prevTasks.map((task) => (task.id === id ? { ...task, title: editedTaskTitle } : task)))
+      setTasks((prevTasks) =>
+        prevTasks.map((task) => (task.id === id ? { ...task, title: editedTaskTitle.trim() } : task)),
+      )
 
       setEditingTaskId(null)
       setEditedTaskTitle("")
@@ -257,11 +286,11 @@ export default function DashboardPage() {
         description: "Task updated successfully!",
       })
     } catch (error) {
-      console.error("Unexpected error:", error)
+      console.error("Unexpected error updating task:", error)
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred while updating the task.",
       })
     }
   }
@@ -272,9 +301,35 @@ export default function DashboardPage() {
     }
   }
 
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return (
+          <Badge variant="outline" className="bg-red-500/20 text-red-500 border-red-500">
+            High
+          </Badge>
+        )
+      case "medium":
+        return (
+          <Badge variant="outline" className="bg-yellow-500/20 text-yellow-500 border-yellow-500">
+            Medium
+          </Badge>
+        )
+      case "low":
+        return (
+          <Badge variant="outline" className="bg-green-500/20 text-green-500 border-green-500">
+            Low
+          </Badge>
+        )
+      default:
+        return null
+    }
+  }
+
   // Initialize authentication and data fetching
   useEffect(() => {
     const initializeDashboard = async () => {
+      console.log("Initializing dashboard...")
       const authenticatedUser = await checkAuth()
       if (authenticatedUser) {
         await fetchTasks(authenticatedUser)
@@ -287,6 +342,7 @@ export default function DashboardPage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state changed:", event, session?.user?.email)
       if (event === "SIGNED_OUT" || !session) {
         router.push("/")
       } else if (event === "SIGNED_IN" && session.user) {
@@ -357,26 +413,53 @@ export default function DashboardPage() {
         </header>
 
         <main className="py-6 space-y-6">
-          <div className="flex items-center gap-2">
-            <Input
-              value={newTask}
-              onChange={(e) => setNewTask(e.target.value)}
-              onKeyPress={(e) => handleKeyPress(e, addTask)}
-              placeholder="Enter new task"
-              className="max-w-sm"
-              disabled={adding}
-            />
-            <Button onClick={addTask} variant="default" disabled={adding || !newTask.trim()}>
-              {adding ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                "Add Task"
-              )}
-            </Button>
-          </div>
+          {/* Add Task Form */}
+          <Card className="p-4">
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Add New Task</h3>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="task-title">Task Title</Label>
+                  <Input
+                    id="task-title"
+                    value={newTask}
+                    onChange={(e) => setNewTask(e.target.value)}
+                    onKeyPress={(e) => handleKeyPress(e, addTask)}
+                    placeholder="Enter task title..."
+                    disabled={adding}
+                  />
+                </div>
+                <div className="w-full sm:w-48">
+                  <Label htmlFor="task-priority">Priority</Label>
+                  <Select value={newTaskPriority} onValueChange={(value: any) => setNewTaskPriority(value)}>
+                    <SelectTrigger id="task-priority">
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button onClick={addTask} disabled={adding || !newTask.trim()}>
+                    {adding ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Task
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
 
           <Tabs defaultValue="workflow" className="w-full">
             <TabsList>
@@ -404,6 +487,7 @@ export default function DashboardPage() {
                         <TableHead>Task</TableHead>
                         <TableHead>Priority</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Prioritized</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -424,14 +508,7 @@ export default function DashboardPage() {
                               </span>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={task.prioritized ? "default" : "secondary"}
-                              className={task.prioritized ? "bg-blue-500 text-white" : "bg-gray-300 text-black"}
-                            >
-                              {task.prioritized ? "High" : "Normal"}
-                            </Badge>
-                          </TableCell>
+                          <TableCell>{getPriorityBadge(task.priority)}</TableCell>
                           <TableCell>
                             <Badge variant="outline">
                               {task.status === "todo"
@@ -439,6 +516,14 @@ export default function DashboardPage() {
                                 : task.status === "in_progress"
                                   ? "In Progress"
                                   : "Done"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={task.prioritized ? "default" : "secondary"}
+                              className={task.prioritized ? "bg-blue-500 text-white" : "bg-gray-300 text-black"}
+                            >
+                              {task.prioritized ? "Yes" : "No"}
                             </Badge>
                           </TableCell>
                           <TableCell className="flex flex-wrap gap-2">
