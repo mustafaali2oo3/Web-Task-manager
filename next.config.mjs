@@ -9,6 +9,11 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  webpack: (config) => {
+    // Suppress dynamic require warning from Supabase Realtime
+    config.module.exprContextCritical = false;
+    return config;
+  },
 }
 
 export default nextConfig
