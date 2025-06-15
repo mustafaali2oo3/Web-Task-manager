@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast-provider"
-import { Loader2, Plus, RefreshCw, LogIn } from "lucide-react"
+import { Loader2, Plus, RefreshCw, LogIn, Calendar } from "lucide-react"
 
 interface Task {
   id: string
@@ -482,6 +482,10 @@ export default function DashboardPage() {
             <Button variant="outline" size="sm" onClick={() => fetchTasks()} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push("/calendar")}>
+              <Calendar className="h-4 w-4 mr-2" />
+              Calendar
             </Button>
             <span className="text-sm text-gray-400">Welcome, {user.email}</span>
             <Button
