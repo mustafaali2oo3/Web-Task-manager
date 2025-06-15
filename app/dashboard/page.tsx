@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { createSupabaseClient } from "@/lib/supabase"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -26,6 +27,7 @@ interface Task {
 
 export default function DashboardPage() {
   const supabase = createSupabaseClient()
+  const router = useRouter()
   const { toast } = useToast()
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTask, setNewTask] = useState("")
@@ -33,24 +35,57 @@ export default function DashboardPage() {
   const [editedTaskTitle, setEditedTaskTitle] = useState("")
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
 
-  const fetchTasks = async () => {
+  // Check authentication and get user session
+  const checkAuth = async () => {
+    try {
+      setSessionLoading(true)
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      if (sessionError) {
+        console.error("Session error:", sessionError)
+        router.push("/")
+        return null
+      }
+
+      if (!session || !session.user) {
+        console.log("No active session found, redirecting to login")
+        router.push("/")
+        return null
+      }
+
+      setUser(session.user)
+      return session.user
+    } catch (error) {
+      console.error("Auth check error:", error)
+      router.push("/")
+      return null
+    } finally {
+      setSessionLoading(false)
+    }
+  }
+
+  const fetchTasks = async (currentUser?: any) => {
     try {
       setLoading(true)
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
 
-      if (userError || !user) {
-        console.error("User fetch error:", userError)
+      // Use the passed user or the state user
+      const userToUse = currentUser || user
+
+      if (!userToUse) {
+        console.error("No user available for fetching tasks")
         return
       }
 
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userToUse.id)
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -77,24 +112,10 @@ export default function DashboardPage() {
   }
 
   const addTask = async () => {
-    if (newTask.trim() === "") return
+    if (newTask.trim() === "" || !user) return
 
     try {
       setAdding(true)
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) {
-        console.error("User fetch error:", userError)
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "You must be logged in to add tasks.",
-        })
-        return
-      }
 
       const { data, error } = await supabase
         .from("tasks")
@@ -140,8 +161,10 @@ export default function DashboardPage() {
   }
 
   const deleteTask = async (id: string) => {
+    if (!user) return
+
     try {
-      const { error } = await supabase.from("tasks").delete().eq("id", id)
+      const { error } = await supabase.from("tasks").delete().eq("id", id).eq("user_id", user.id)
 
       if (error) {
         console.error("Delete error:", error)
@@ -169,8 +192,14 @@ export default function DashboardPage() {
   }
 
   const prioritizeTask = async (id: string, current: boolean) => {
+    if (!user) return
+
     try {
-      const { error } = await supabase.from("tasks").update({ prioritized: !current }).eq("id", id)
+      const { error } = await supabase
+        .from("tasks")
+        .update({ prioritized: !current })
+        .eq("id", id)
+        .eq("user_id", user.id)
 
       if (error) {
         console.error("Update error:", error)
@@ -199,10 +228,14 @@ export default function DashboardPage() {
   }
 
   const saveEditedTask = async (id: string) => {
-    if (editedTaskTitle.trim() === "") return
+    if (editedTaskTitle.trim() === "" || !user) return
 
     try {
-      const { error } = await supabase.from("tasks").update({ title: editedTaskTitle }).eq("id", id)
+      const { error } = await supabase
+        .from("tasks")
+        .update({ title: editedTaskTitle })
+        .eq("id", id)
+        .eq("user_id", user.id)
 
       if (error) {
         console.error("Update error:", error)
@@ -239,9 +272,55 @@ export default function DashboardPage() {
     }
   }
 
+  // Initialize authentication and data fetching
   useEffect(() => {
-    fetchTasks()
+    const initializeDashboard = async () => {
+      const authenticatedUser = await checkAuth()
+      if (authenticatedUser) {
+        await fetchTasks(authenticatedUser)
+      }
+    }
+
+    initializeDashboard()
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        router.push("/")
+      } else if (event === "SIGNED_IN" && session.user) {
+        setUser(session.user)
+        await fetchTasks(session.user)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
+
+  // Show loading screen while checking authentication
+  if (sessionLoading) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p>Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show loading screen if no user (will redirect)
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p>Redirecting to login...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -262,6 +341,18 @@ export default function DashboardPage() {
               <polyline points="22 4 12 14.01 9 11.01" />
             </svg>
             <h1 className="text-2xl font-bold gradient-text">TaskFlow Dashboard</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-400">Welcome, {user.email}</span>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                await supabase.auth.signOut()
+                router.push("/")
+              }}
+            >
+              Logout
+            </Button>
           </div>
         </header>
 
