@@ -129,8 +129,8 @@ export function TaskForm({ task }: TaskFormProps) {
         })
       }
 
-      router.push("/tasks")
       router.refresh()
+      router.push("/tasks")
     } catch (error: any) {
       toast({
         variant: "destructive",
